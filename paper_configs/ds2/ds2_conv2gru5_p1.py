@@ -31,7 +31,7 @@ base_params = {
   "learning_rate": 0.001,
   "lr_policy": poly_decay,
   "lr_policy_params": {
-    "power": 2,
+   "power": 1,
   },
   "larc_params": {
     "larc_nu": 0.001,

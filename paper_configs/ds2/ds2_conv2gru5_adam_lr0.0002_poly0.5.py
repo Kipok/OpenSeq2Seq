@@ -24,17 +24,11 @@ base_params = {
   "save_checkpoint_steps": 1000,
   "logdir": "experiments/librispeech",
 
-  "optimizer": "Momentum",
-  "optimizer_params": {
-    "momentum": 0.90,
-  },
-  "learning_rate": 0.001,
+  "optimizer": "Adam",
+  "learning_rate": 0.0005,
   "lr_policy": poly_decay,
   "lr_policy_params": {
-    "power": 2,
-  },
-  "larc_params": {
-    "larc_nu": 0.001,
+   "power": 0.5,
   },
   "dtype": tf.float32,
   # weight decay
