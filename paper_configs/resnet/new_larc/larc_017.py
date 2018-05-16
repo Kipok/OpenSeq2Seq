@@ -36,7 +36,7 @@ base_params = {
 
   "save_summaries_steps": 2000,
   "print_loss_steps": 2000,
-  "print_samples_steps": 5000,
+  "print_samples_steps": 2000,
   "eval_steps": 5000,
   "save_checkpoint_steps": 5000,
   "logdir": "experiments/resnet50-imagenet",
