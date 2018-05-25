@@ -62,6 +62,7 @@ class Model:
       'num_epochs': int,
       'max_steps': int,
       'bench_start': int,
+      'bench_mode': ['tokens', 'images'],
 
       'data_layer_params': dict,
       'optimizer': None,  # could be class or string
@@ -620,6 +621,14 @@ class Model:
       return tf.float16
     else:
       return self.params['dtype']
+
+  def num_objects_per_step(self):
+    """Define this method if you need benchmarking functionality.
+    For example, for translation models, this method should return number of
+    tokens in current batch, for image recognition model should return number
+    of images in current batch.
+    """
+    raise NotImplementedError()
 
   @property
   def params(self):
