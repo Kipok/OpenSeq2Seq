@@ -35,6 +35,33 @@ from six.moves import range
 import tensorflow as tf
 
 
+def get_assert_op(inputs, in_name):
+  all_finite = tf.reduce_all(tf.is_finite(inputs))
+  assert_finite = tf.Assert(
+    all_finite,
+    [
+      tf.constant(inputs.name), tf.shape(inputs),
+      tf.where(tf.logical_not(tf.is_finite(inputs))),
+      tf.gather_nd(inputs, tf.where(tf.logical_not(tf.is_finite(inputs)))),
+      inputs,
+    ],
+    summarize=10000,
+    name="nan_in_{}_of{}".format(in_name, inputs.name.split(":")[0]),
+  )
+  return assert_finite
+
+
+def assert_nan_check(op, inputs, *args, **kwargs):
+  with tf.control_dependencies([get_assert_op(inputs, 'input')]):
+    outputs = op(inputs, *args, **kwargs)
+  with tf.control_dependencies([get_assert_op(outputs, 'output')]):
+    return tf.identity(outputs)
+
+
+def relu(inputs):
+  return assert_nan_check(tf.nn.relu, inputs)
+
+
 ################################################################################
 # Convenience functions for building the ResNet model.
 ################################################################################
@@ -42,10 +69,11 @@ def batch_norm(inputs, training, data_format, regularizer, momentum, epsilon):
   """Performs a batch normalization using a standard set of parameters."""
   # We set fused=True for a significant performance boost. See
   # https://www.tensorflow.org/performance/performance_guide#common_fused_ops
-  return tf.layers.batch_normalization(
-      inputs=inputs, axis=1 if data_format == 'channels_first' else 3,
-      momentum=momentum, epsilon=epsilon, center=True,
-      scale=True, training=training, fused=True, gamma_regularizer=regularizer)
+  return assert_nan_check(
+    tf.layers.batch_normalization,
+    inputs=inputs, axis=1 if data_format == 'channels_first' else 3,
+    momentum=momentum, epsilon=epsilon, center=True,
+    scale=True, training=training, fused=True, gamma_regularizer=regularizer)
 
 
 def fixed_padding(inputs, kernel_size, data_format):
@@ -83,10 +111,11 @@ def conv2d_fixed_padding(inputs, filters, kernel_size, strides,
   if strides > 1:
     inputs = fixed_padding(inputs, kernel_size, data_format)
 
-  return tf.layers.conv2d(
-      inputs=inputs, filters=filters, kernel_size=kernel_size, strides=strides,
-      padding=('SAME' if strides == 1 else 'VALID'), use_bias=False,
-      data_format=data_format, kernel_regularizer=regularizer)
+  return assert_nan_check(
+    tf.layers.conv2d,
+    inputs=inputs, filters=filters, kernel_size=kernel_size, strides=strides,
+    padding=('SAME' if strides == 1 else 'VALID'), use_bias=False,
+    data_format=data_format, kernel_regularizer=regularizer)
 
 
 ################################################################################
@@ -129,7 +158,7 @@ def building_block_v1(inputs, filters, training, projection_shortcut, strides,
       data_format=data_format, regularizer=regularizer)
   inputs = batch_norm(inputs, training, data_format, regularizer=bn_regularizer,
                       momentum=bn_momentum, epsilon=bn_epsilon)
-  inputs = tf.nn.relu(inputs)
+  inputs = relu(inputs)
 
   inputs = conv2d_fixed_padding(
       inputs=inputs, filters=filters, kernel_size=3, strides=1,
@@ -137,7 +166,7 @@ def building_block_v1(inputs, filters, training, projection_shortcut, strides,
   inputs = batch_norm(inputs, training, data_format, regularizer=bn_regularizer,
                       momentum=bn_momentum, epsilon=bn_epsilon)
   inputs += shortcut
-  inputs = tf.nn.relu(inputs)
+  inputs = relu(inputs)
 
   return inputs
 
@@ -170,7 +199,7 @@ def building_block_v2(inputs, filters, training, projection_shortcut, strides,
   shortcut = inputs
   inputs = batch_norm(inputs, training, data_format, regularizer=bn_regularizer,
                       momentum=bn_momentum, epsilon=bn_epsilon)
-  inputs = tf.nn.relu(inputs)
+  inputs = relu(inputs)
 
   # The projection shortcut should come after the first batch norm and ReLU
   # since it performs a 1x1 convolution.
@@ -183,7 +212,7 @@ def building_block_v2(inputs, filters, training, projection_shortcut, strides,
 
   inputs = batch_norm(inputs, training, data_format, regularizer=bn_regularizer,
                       momentum=bn_momentum, epsilon=bn_epsilon)
-  inputs = tf.nn.relu(inputs)
+  inputs = relu(inputs)
   inputs = conv2d_fixed_padding(
       inputs=inputs, filters=filters, kernel_size=3, strides=1,
       data_format=data_format, regularizer=regularizer)
@@ -231,14 +260,14 @@ def bottleneck_block_v1(inputs, filters, training, projection_shortcut,
       data_format=data_format, regularizer=regularizer)
   inputs = batch_norm(inputs, training, data_format, regularizer=bn_regularizer,
                       momentum=bn_momentum, epsilon=bn_epsilon)
-  inputs = tf.nn.relu(inputs)
+  inputs = relu(inputs)
 
   inputs = conv2d_fixed_padding(
       inputs=inputs, filters=filters, kernel_size=3, strides=strides,
       data_format=data_format, regularizer=regularizer)
   inputs = batch_norm(inputs, training, data_format, regularizer=bn_regularizer,
                       momentum=bn_momentum, epsilon=bn_epsilon)
-  inputs = tf.nn.relu(inputs)
+  inputs = relu(inputs)
 
   inputs = conv2d_fixed_padding(
       inputs=inputs, filters=4 * filters, kernel_size=1, strides=1,
@@ -246,7 +275,7 @@ def bottleneck_block_v1(inputs, filters, training, projection_shortcut,
   inputs = batch_norm(inputs, training, data_format, regularizer=bn_regularizer,
                       momentum=bn_momentum, epsilon=bn_epsilon)
   inputs += shortcut
-  inputs = tf.nn.relu(inputs)
+  inputs = relu(inputs)
 
   return inputs
 
@@ -287,7 +316,7 @@ def bottleneck_block_v2(inputs, filters, training, projection_shortcut,
   shortcut = inputs
   inputs = batch_norm(inputs, training, data_format, regularizer=bn_regularizer,
                       momentum=bn_momentum, epsilon=bn_epsilon)
-  inputs = tf.nn.relu(inputs)
+  inputs = relu(inputs)
 
   # The projection shortcut should come after the first batch norm and ReLU
   # since it performs a 1x1 convolution.
@@ -300,14 +329,14 @@ def bottleneck_block_v2(inputs, filters, training, projection_shortcut,
 
   inputs = batch_norm(inputs, training, data_format, regularizer=bn_regularizer,
                       momentum=bn_momentum, epsilon=bn_epsilon)
-  inputs = tf.nn.relu(inputs)
+  inputs = relu(inputs)
   inputs = conv2d_fixed_padding(
       inputs=inputs, filters=filters, kernel_size=3, strides=strides,
       data_format=data_format, regularizer=regularizer)
 
   inputs = batch_norm(inputs, training, data_format, regularizer=bn_regularizer,
                       momentum=bn_momentum, epsilon=bn_epsilon)
-  inputs = tf.nn.relu(inputs)
+  inputs = relu(inputs)
   inputs = conv2d_fixed_padding(
       inputs=inputs, filters=4 * filters, kernel_size=1, strides=1,
       data_format=data_format, regularizer=regularizer)

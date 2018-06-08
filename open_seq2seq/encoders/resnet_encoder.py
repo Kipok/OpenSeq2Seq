@@ -6,7 +6,8 @@ from six.moves import range
 import tensorflow as tf
 from .resnet_blocks import conv2d_fixed_padding, batch_norm, block_layer, \
                            bottleneck_block_v1, bottleneck_block_v2, \
-                           building_block_v1, building_block_v2
+                           building_block_v1, building_block_v2, relu, \
+                           assert_nan_check
 from .encoder import Encoder
 
 
@@ -115,10 +116,11 @@ class ResNetEncoder(Encoder):
       inputs = batch_norm(inputs, training, data_format,
                           regularizer=bn_regularizer,
                           momentum=bn_momentum, epsilon=bn_epsilon)
-      inputs = tf.nn.relu(inputs)
+      inputs = relu(inputs)
 
     if first_pool_size:
-      inputs = tf.layers.max_pooling2d(
+      inputs = assert_nan_check(
+        tf.layers.max_pooling2d,
         inputs=inputs, pool_size=first_pool_size,
         strides=first_pool_stride, padding='SAME',
         data_format=data_format,
@@ -139,7 +141,7 @@ class ResNetEncoder(Encoder):
       inputs = batch_norm(inputs, training, data_format,
                           regularizer=bn_regularizer,
                           momentum=bn_momentum, epsilon=bn_epsilon)
-      inputs = tf.nn.relu(inputs)
+      inputs = relu(inputs)
 
     # The current top layer has shape
     # `batch_size x pool_size x pool_size x final_size`.
@@ -147,7 +149,7 @@ class ResNetEncoder(Encoder):
     # but that is the same as doing a reduce_mean. We do a reduce_mean
     # here because it performs better than AveragePooling2D.
     axes = [2, 3] if data_format == 'channels_first' else [1, 2]
-    inputs = tf.reduce_mean(inputs, axes, keepdims=True)
+    inputs = assert_nan_check(tf.reduce_mean, inputs, axes, keepdims=True)
     inputs = tf.identity(inputs, 'final_reduce_mean')
 
     outputs = tf.reshape(inputs, [-1, final_size])

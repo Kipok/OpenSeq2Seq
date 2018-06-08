@@ -9,6 +9,7 @@ decoder by cutting, for example, on the last fully-connected layer.
 from __future__ import absolute_import, division, print_function
 from __future__ import unicode_literals
 from six.moves import range
+from open_seq2seq.encoders.resnet_blocks import assert_nan_check
 
 import tensorflow as tf
 import os
@@ -61,7 +62,8 @@ class FullyConnectedDecoder(Decoder):
     regularizer = self.params.get('regularizer', None)
 
     # activation is linear by default
-    logits = tf.layers.dense(
+    logits = assert_nan_check(
+      tf.layers.dense,
       inputs=inputs,
       units=self.params['output_dim'],
       kernel_regularizer=regularizer,
