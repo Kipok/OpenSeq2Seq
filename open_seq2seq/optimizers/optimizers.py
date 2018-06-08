@@ -342,19 +342,6 @@ def optimize_loss(loss,
       colocate_gradients_with_ops=colocate_gradients_with_ops,
     )
 
-    # Optionally add gradient noise.
-    if gradient_noise_scale is not None:
-      gradients = _add_scaled_noise_to_gradients(gradients,
-                                                 gradient_noise_scale)
-
-    # Multiply some gradients.
-    if gradient_multipliers is not None:
-      gradients = _multiply_gradients(gradients, gradient_multipliers)
-      if not gradients:
-        raise ValueError(
-            "Empty list of (gradient, var) pairs encountered. This is most "
-            "likely to be caused by an improper value of gradient_multipliers.")
-
     if "global_gradient_norm" in summaries or "gradient_norm" in summaries:
       summary.scalar(
         "global_norm/gradient_norm",
@@ -371,8 +358,6 @@ def optimize_loss(loss,
       )
     if isinstance(clip_gradients, float):
       gradients = _clip_gradients_by_norm(gradients, clip_gradients)
-    elif callable(clip_gradients):
-      gradients = clip_gradients(gradients)
     elif clip_gradients is not None:
       raise ValueError(
           "Unknown type %s for clip_gradients" % type(clip_gradients))
@@ -573,38 +558,3 @@ def adaptive_clipping_fn(std_factor=2.,
     return list(zip(clipped_grads, variables))
 
   return gradient_clipping
-
-
-def _add_scaled_noise_to_gradients(grads_and_vars, gradient_noise_scale):
-  """Adds scaled noise from a 0-mean normal distribution to gradients."""
-  gradients, variables = zip(*grads_and_vars)
-  noisy_gradients = []
-  for gradient in gradients:
-    if gradient is None:
-      noisy_gradients.append(None)
-      continue
-    if isinstance(gradient, ops.IndexedSlices):
-      gradient_shape = gradient.dense_shape
-    else:
-      gradient_shape = gradient.get_shape()
-    noise = random_ops.truncated_normal(gradient_shape) * gradient_noise_scale
-    noisy_gradients.append(gradient + noise)
-  return list(zip(noisy_gradients, variables))
-
-
-def _multiply_gradients(grads_and_vars, gradient_multipliers):
-  """Multiply specified gradients."""
-  multiplied_grads_and_vars = []
-  for grad, var in grads_and_vars:
-    if grad is not None and \
-       (var in gradient_multipliers or var.name in gradient_multipliers):
-      key = var if var in gradient_multipliers else var.name
-      multiplier = constant_op.constant(
-          gradient_multipliers[key], dtype=dtypes.float32)
-      if isinstance(grad, ops.IndexedSlices):
-        grad_values = grad.values * multiplier
-        grad = ops.IndexedSlices(grad_values, grad.indices, grad.dense_shape)
-      else:
-        grad *= multiplier
-    multiplied_grads_and_vars.append((grad, var))
-  return multiplied_grads_and_vars

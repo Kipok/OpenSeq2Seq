@@ -77,7 +77,8 @@ def train(train_model, eval_model=None, debug_port=None):
 
   if debug_port:
     hooks.append(
-      tf_debug.TensorBoardDebugHook("localhost:{}".format(debug_port))
+      tf_debug.TensorBoardDebugHook(str("localhost:{}".format(debug_port)),
+                                    send_traceback_and_source_code=False)
     )
 
   if train_model.on_horovod:
@@ -112,6 +113,9 @@ def train(train_model, eval_model=None, debug_port=None):
     stop_grace_period_secs=300,
     hooks=hooks,
   ) as sess:
+
+    # sess = tf_debug.LocalCLIDebugWrapperSession(sess)
+
     step = 0
     while True:
       if sess.should_stop():

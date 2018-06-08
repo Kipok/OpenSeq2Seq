@@ -6,6 +6,7 @@ from __future__ import unicode_literals
 from six.moves import range
 
 import tensorflow as tf
+import numpy as np
 from .automatic_loss_scaler import AutomaticLossScaler
 
 
@@ -31,14 +32,18 @@ class MixedPrecisionOptimizerWrapper(tf.train.Optimizer):
                         aggregation_method=None,
                         colocate_gradients_with_ops=False,
                         grad_loss=None):
-    loss *= self._loss_scale
-    grads_and_vars_fp16 = self._optimizer.compute_gradients(
-      loss, var_list=var_list,
-      gate_gradients=gate_gradients,
-      aggregation_method=aggregation_method,
-      colocate_gradients_with_ops=colocate_gradients_with_ops,
-      grad_loss=grad_loss,
-    )
+    with tf.control_dependencies([tf.Assert(tf.is_finite(loss), [loss],
+                                            name="nan_in_loss")]):
+      loss *= self._loss_scale
+    with tf.control_dependencies([tf.Assert(tf.is_finite(loss), [loss, self._loss_scale],
+                                            name="nan_in_loss_after_scale")]):
+      grads_and_vars_fp16 = self._optimizer.compute_gradients(
+        loss, var_list=var_list,
+        gate_gradients=gate_gradients,
+        aggregation_method=aggregation_method,
+        colocate_gradients_with_ops=colocate_gradients_with_ops,
+        grad_loss=grad_loss,
+      )
 
     # collecting regularization functions
     reg_var_funcs = tf.get_collection('REGULARIZATION_FUNCTIONS')
@@ -46,8 +51,13 @@ class MixedPrecisionOptimizerWrapper(tf.train.Optimizer):
 
     # creating FP-32 variables and filling the fp32 dict
     grads_and_vars_fp32 = []
+    has_nans = []
+    var_names = []
     with tf.variable_scope('FP32-master-copy'):
       for grad, var in grads_and_vars_fp16:
+        has_nans.append(tf.logical_or(tf.reduce_any(tf.is_nan(grad)),
+                                      tf.is_inf(tf.reduce_max(tf.abs(grad)))))
+        var_names.append(var.name)
         if var.dtype.base_dtype == tf.float16:
           fp32_var = tf.Variable(
             initial_value=tf.cast(var.initialized_value(), tf.float32),
@@ -61,14 +71,7 @@ class MixedPrecisionOptimizerWrapper(tf.train.Optimizer):
                          "FP32_MASTER_COPIES"],
           )
           self._fp32_to_fp16[fp32_var.name] = var
-          assert_grad_nan = tf.Assert(
-            tf.is_finite(tf.reduce_max(grad)),
-            [tf.reduce_max(grad), grad, var],
-            summarize=10000,
-            name="nan_assert_for/{}".format(var.name.split(':')[0]),
-          )
-          with tf.control_dependencies([assert_grad_nan]):
-            fp32_grad = tf.cast(grad, tf.float32)
+          fp32_grad = tf.cast(grad, tf.float32)
           # adding regularization part with respect to fp32 copy
           if var.name in reg_funcs:
             fp32_grad += self._loss_scale * tf.gradients(
@@ -82,8 +85,18 @@ class MixedPrecisionOptimizerWrapper(tf.train.Optimizer):
         else:
           grads_and_vars_fp32.append((grad, var))
 
-    grads_and_vars_fp32 = _scale_grads(grads_and_vars_fp32,
-                                       1.0 / self._loss_scale)
+    assert_grad_nan = tf.Assert(
+      tf.equal(tf.reduce_sum(tf.cast(tf.stack(has_nans), tf.float32)), 0),
+      [loss] + has_nans + [tf.constant(var_name) for var_name in var_names],
+      summarize=10000,
+      name="nan_in_grads",
+    )
+    with tf.control_dependencies([assert_grad_nan]):
+      grads_and_vars_fp32 = _scale_grads(grads_and_vars_fp32,
+                                         1.0 / self._loss_scale)
+    # grads_and_vars_fp32 = _scale_grads(grads_and_vars_fp32,
+    #                                    1.0 / self._loss_scale)
+
     return grads_and_vars_fp32
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
