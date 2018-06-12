@@ -111,8 +111,7 @@ def conv2d_fixed_padding(inputs, filters, kernel_size, strides,
   if strides > 1:
     inputs = fixed_padding(inputs, kernel_size, data_format)
 
-  return assert_nan_check(
-    tf.layers.conv2d,
+  return tf.layers.conv2d(
     inputs=inputs, filters=filters, kernel_size=kernel_size, strides=strides,
     padding=('SAME' if strides == 1 else 'VALID'), use_bias=False,
     data_format=data_format, kernel_regularizer=regularizer)
