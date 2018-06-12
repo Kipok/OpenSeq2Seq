@@ -69,8 +69,7 @@ def batch_norm(inputs, training, data_format, regularizer, momentum, epsilon):
   """Performs a batch normalization using a standard set of parameters."""
   # We set fused=True for a significant performance boost. See
   # https://www.tensorflow.org/performance/performance_guide#common_fused_ops
-  return assert_nan_check(
-    tf.layers.batch_normalization,
+  return tf.layers.batch_normalization(
     inputs=inputs, axis=1 if data_format == 'channels_first' else 3,
     momentum=momentum, epsilon=epsilon, center=True,
     scale=True, training=training, fused=True, gamma_regularizer=regularizer)
