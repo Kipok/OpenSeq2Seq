@@ -32,18 +32,14 @@ class MixedPrecisionOptimizerWrapper(tf.train.Optimizer):
                         aggregation_method=None,
                         colocate_gradients_with_ops=False,
                         grad_loss=None):
-    with tf.control_dependencies([tf.Assert(tf.is_finite(loss), [loss],
-                                            name="nan_in_loss")]):
-      loss *= self._loss_scale
-    with tf.control_dependencies([tf.Assert(tf.is_finite(loss), [loss, self._loss_scale],
-                                            name="nan_in_loss_after_scale")]):
-      grads_and_vars_fp16 = self._optimizer.compute_gradients(
-        loss, var_list=var_list,
-        gate_gradients=gate_gradients,
-        aggregation_method=aggregation_method,
-        colocate_gradients_with_ops=colocate_gradients_with_ops,
-        grad_loss=grad_loss,
-      )
+    loss *= self._loss_scale
+    grads_and_vars_fp16 = self._optimizer.compute_gradients(
+      loss, var_list=var_list,
+      gate_gradients=gate_gradients,
+      aggregation_method=aggregation_method,
+      colocate_gradients_with_ops=colocate_gradients_with_ops,
+      grad_loss=grad_loss,
+    )
 
     # collecting regularization functions
     reg_var_funcs = tf.get_collection('REGULARIZATION_FUNCTIONS')
@@ -51,13 +47,8 @@ class MixedPrecisionOptimizerWrapper(tf.train.Optimizer):
 
     # creating FP-32 variables and filling the fp32 dict
     grads_and_vars_fp32 = []
-    has_nans = []
-    var_names = []
     with tf.variable_scope('FP32-master-copy'):
       for grad, var in grads_and_vars_fp16:
-        has_nans.append(tf.logical_or(tf.reduce_any(tf.is_nan(grad)),
-                                      tf.is_inf(tf.reduce_max(tf.abs(grad)))))
-        var_names.append(var.name)
         if var.dtype.base_dtype == tf.float16:
           fp32_var = tf.Variable(
             initial_value=tf.cast(var.initialized_value(), tf.float32),
@@ -85,17 +76,8 @@ class MixedPrecisionOptimizerWrapper(tf.train.Optimizer):
         else:
           grads_and_vars_fp32.append((grad, var))
 
-    assert_grad_nan = tf.Assert(
-      tf.equal(tf.reduce_sum(tf.cast(tf.stack(has_nans), tf.float32)), 0),
-      [loss] + has_nans + [tf.constant(var_name) for var_name in var_names],
-      summarize=10000,
-      name="nan_in_grads",
-    )
-    with tf.control_dependencies([assert_grad_nan]):
-      grads_and_vars_fp32 = _scale_grads(grads_and_vars_fp32,
-                                         1.0 / self._loss_scale)
-    # grads_and_vars_fp32 = _scale_grads(grads_and_vars_fp32,
-    #                                    1.0 / self._loss_scale)
+    grads_and_vars_fp32 = _scale_grads(grads_and_vars_fp32,
+                                       1.0 / self._loss_scale)
 
     return grads_and_vars_fp32
 
