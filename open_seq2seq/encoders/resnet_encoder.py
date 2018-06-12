@@ -119,8 +119,7 @@ class ResNetEncoder(Encoder):
       inputs = relu(inputs)
 
     if first_pool_size:
-      inputs = assert_nan_check(
-        tf.layers.max_pooling2d,
+      inputs = tf.layers.max_pooling2d(
         inputs=inputs, pool_size=first_pool_size,
         strides=first_pool_stride, padding='SAME',
         data_format=data_format,
