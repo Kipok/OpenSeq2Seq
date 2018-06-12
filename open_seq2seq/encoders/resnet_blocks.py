@@ -59,7 +59,7 @@ def assert_nan_check(op, inputs, *args, **kwargs):
 
 
 def relu(inputs):
-  return assert_nan_check(tf.nn.relu, inputs)
+  return tf.nn.relu(inputs)
 
 
 ################################################################################
