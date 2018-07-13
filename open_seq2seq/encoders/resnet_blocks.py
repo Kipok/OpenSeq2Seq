@@ -359,3 +359,45 @@ def block_layer(inputs, filters, bottleneck, block_fn, blocks, strides,
                       bn_momentum=bn_momentum, bn_epsilon=bn_epsilon)
 
   return tf.identity(inputs, name)
+
+
+def resnet(inputs, size, version, data_format,
+           training, regularizer=None,
+           bn_momentum=0.997, bn_epsilon=1e-5,
+           regularize_bn=True):
+  bottleneck = size >= 50
+  block_sizes_dict = {
+    18: [2, 2, 2, 2],
+    34: [3, 4, 6, 3],
+    50: [3, 4, 6, 3],
+    101: [3, 4, 23, 3],
+    152: [3, 8, 36, 3],
+    200: [3, 24, 36, 3],
+  }
+  block_sizes = block_sizes_dict[size]
+  num_filters = 64
+  block_strides = [1, 2, 2, 2]
+
+  if bottleneck:
+    if version == 1:
+      block_fn = bottleneck_block_v1
+    else:
+      block_fn = bottleneck_block_v2
+  else:
+    if version == 1:
+      block_fn = building_block_v1
+    else:
+      block_fn = building_block_v2
+
+  bn_regularizer = regularizer if regularize_bn else None
+
+  for i, num_blocks in enumerate(block_sizes):
+    cur_num_filters = num_filters * (2 ** i)
+    inputs = block_layer(
+      inputs=inputs, filters=cur_num_filters, bottleneck=bottleneck,
+      block_fn=block_fn, blocks=num_blocks,
+      strides=block_strides[i], training=training,
+      name='block_layer{}'.format(i + 1), data_format=data_format,
+      regularizer=regularizer, bn_regularizer=bn_regularizer,
+      bn_momentum=bn_momentum, bn_epsilon=bn_epsilon,
+    )
